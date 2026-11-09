@@ -1948,12 +1948,24 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 		}
 	}
 
+	// Some accounts receive statuses as top-level <status> stanzas instead of
+	// <message from="status@broadcast">. Unacked stanzas are redelivered on
+	// reconnect and eventually close the stream.
+	const handleStatus = async (node: BinaryNode) => {
+		try {
+			await sendMessageAck(node)
+		} catch (error) {
+			onUnexpectedError(error as Error, 'acking status stanza')
+		}
+	}
+
 	const offlineNodeProcessor = makeOfflineNodeProcessor(
 		new Map<MessageType, (node: BinaryNode) => Promise<void>>([
 			['message', handleMessage],
 			['call', handleCall],
 			['receipt', handleReceipt],
-			['notification', handleNotification]
+			['notification', handleNotification],
+			['status', handleStatus]
 		]),
 		{
 			isWsOpen: () => ws.isOpen,
@@ -2011,6 +2023,14 @@ export const makeMessagesRecvSocket = (config: SocketConfig) => {
 	ws.on('CB:notification', async (node: BinaryNode) => {
 		await processNode('notification', node, 'handling notification', handleNotification)
 	})
+
+	ws.on('CB:status', async (node: BinaryNode) => {
+		// processNode also ACKs ignored JIDs, outside handleStatus' error handling.
+		await processNode('status', node, 'acking status stanza', handleStatus).catch(error =>
+			onUnexpectedError(error, 'acking status stanza')
+		)
+	})
+
 	ws.on('CB:ack,class:message', (node: BinaryNode) => {
 		handleBadAck(node).catch(error => onUnexpectedError(error, 'handling bad ack'))
 	})

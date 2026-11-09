@@ -1,0 +1,9 @@
+.git/
+node_modules/
+lib/
+.yarn/
+coverage/
+docs/
+proto-extract/
+Example/
+Media/
